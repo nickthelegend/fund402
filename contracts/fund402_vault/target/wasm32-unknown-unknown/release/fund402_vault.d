@@ -1,0 +1,1 @@
+/Users/jaibajrang/Desktop/Projects/stellar/fund402/contracts/fund402_vault/target/wasm32-unknown-unknown/release/fund402_vault.wasm: /Users/jaibajrang/Desktop/Projects/stellar/fund402/contracts/fund402_vault/src/lib.rs
