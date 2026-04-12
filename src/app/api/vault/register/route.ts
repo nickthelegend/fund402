@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Pool } from "pg";
+import { registerVault } from "../../../../lib/db";
 import { randomUUID } from "crypto";
-
-const db = new Pool({
-  connectionString: process.env.DATABASE_URL ?? "postgresql://localhost:5432/fund402",
-});
 
 function isAllowedUrl(raw: string): boolean {
   if (process.env.NODE_ENV !== "production") return true;
@@ -36,11 +32,15 @@ export async function POST(req: NextRequest) {
     }
 
     const vaultId = randomUUID();
-    await db.query(
-      `INSERT INTO vaults (id, provider_address, origin_url, price_usdc, description, active)
-       VALUES ($1, $2, $3, $4, $5, true)`,
-      [vaultId, providerAddress, originUrl, priceUsdc, description ?? ""]
-    );
+    
+    await registerVault({
+      id: vaultId,
+      provider_address: providerAddress,
+      origin_url: originUrl,
+      price_usdc: priceUsdc,
+      description: description ?? "",
+      active: true
+    });
 
     const gateway = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
     const wrappedUrl = `${gateway}/v/${vaultId}/`;

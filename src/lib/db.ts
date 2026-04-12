@@ -60,6 +60,16 @@ export async function getActiveVaultCount() {
   return await db.collection('Vaults').countDocuments({ active: true });
 }
 
+export async function getAllVaults() {
+  const { db } = await connectToDatabase();
+  return await db.collection('Vaults').find({ active: true }).sort({ _id: -1 }).toArray();
+}
+
+export async function registerVault(vaultData: any) {
+  const { db } = await connectToDatabase();
+  await db.collection('Vaults').insertOne(vaultData);
+}
+
 // ─── RECEIPTS (CALLS) ──────────────────────────────────────────────
 export async function insertCall(callData: any) {
   const { db } = await connectToDatabase();
