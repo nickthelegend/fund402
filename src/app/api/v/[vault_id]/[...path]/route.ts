@@ -253,7 +253,7 @@ export async function GET(
     }
 
     // ── Replay prevention ──
-    const alreadySettled = await isAlreadySettled(txHash);
+    const alreadySettled = await isSettled(txHash);
     if (alreadySettled) {
       console.warn(`[fund402] 🔁 Replay detected! Hash already settled: ${txHash}`);
       return NextResponse.json(
