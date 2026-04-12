@@ -163,3 +163,19 @@ export function extractTxHash(txXdr: string, networkPassphrase: string): string 
   const tx = StellarSdk.TransactionBuilder.fromXDR(txXdr, networkPassphrase);
   return tx.hash().toString("hex");
 }
+
+export function testnetConfig(): Partial<Fund402Config> {
+  return {
+    networkPassphrase: StellarSdk.Networks.TESTNET,
+    horizonUrl: "https://horizon-testnet.stellar.org",
+    sorobanRpcUrl: "https://soroban-testnet.stellar.org",
+  };
+}
+
+export function mainnetConfig(): Partial<Fund402Config> {
+  return {
+    networkPassphrase: StellarSdk.Networks.PUBLIC,
+    horizonUrl: "https://horizon.stellar.org",
+    sorobanRpcUrl: "https://soroban-testnet.stellar.org", // Soroban RPC often shares testnet URL or has custom ones
+  };
+}
