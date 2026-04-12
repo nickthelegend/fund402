@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Pool } from "pg";
+import { getDb, saveDb } from "../../../../../lib/db";
 import { createClient } from "redis";
 import * as StellarSdk from "@stellar/stellar-sdk";
-
-// ─── DB + REDIS SETUP ───────────────────────────────────────────────────────
-
-const db = new Pool({
-  connectionString: process.env.DATABASE_URL ?? "postgresql://localhost:5432/fund402",
-});
 
 const redisClient = createClient({
   url: process.env.REDIS_URL ?? "redis://localhost:6379",
@@ -185,30 +179,13 @@ export async function GET(
   }
 
   // ── Load vault from DB ──
-  let vaultRow: {
-    id: string;
-    provider_address: string;
-    origin_url: string;
-    price_usdc: number;
-    description: string;
-  };
-  try {
-    const result = await db.query(
-      "SELECT id, provider_address, origin_url, price_usdc, description FROM vaults WHERE id = $1 AND active = true",
-      [vault_id]
-    );
-    if (result.rows.length === 0) {
-      return NextResponse.json(
-        { error: "vault_not_found", vault_id },
-        { status: 404, headers: CORS_HEADERS }
-      );
-    }
-    vaultRow = result.rows[0];
-  } catch (err) {
-    console.error("[fund402] DB error loading vault:", err);
+  const db = getDb();
+  const vaultRow = db.vaults[vault_id];
+
+  if (!vaultRow || !vaultRow.active) {
     return NextResponse.json(
-      { error: "database_error" },
-      { status: 503, headers: CORS_HEADERS }
+      { error: "vault_not_found", vault_id },
+      { status: 404, headers: CORS_HEADERS }
     );
   }
 
@@ -368,25 +345,17 @@ export async function GET(
     await markSettled(txHash, agentAddress, vault_id);
 
     // ── Record in Postgres ──
-    try {
-      await db.query(
-        `INSERT INTO calls (vault_id, tx_hash, payer_address, amount_usdc, status, created_at)
-         VALUES ($1, $2, $3, $4, 'confirmed', NOW())
-         ON CONFLICT (tx_hash) DO NOTHING`,
-        [vault_id, txHash, agentAddress, vaultRow.price_usdc]
-      );
-      await db.query(
-        `UPDATE pool_state SET
-           total_calls = total_calls + 1,
-           total_revenue_usdc = total_revenue_usdc + $1,
-           updated_at = NOW()
-         WHERE id = 1`,
-        [vaultRow.price_usdc]
-      );
-    } catch (dbErr) {
-      // Non-fatal — log and continue
-      console.error("[fund402] DB write error (non-fatal):", dbErr);
-    }
+    const currentDb = getDb();
+    currentDb.calls.push({
+      id: crypto.randomUUID(),
+      vault_id,
+      tx_hash: txHash,
+      agent_address: agentAddress,
+      amount_usdc: vaultRow.price_usdc,
+      status: 'confirmed',
+      created_at: new Date().toISOString()
+    });
+    saveDb(currentDb);
 
     // ── SSRF check on origin ──
     if (!isAllowedUrl(vaultRow.origin_url)) {
