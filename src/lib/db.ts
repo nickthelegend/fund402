@@ -14,7 +14,7 @@ const DEFAULT_DB: LocalDB = {
       id: 'a0000000-0000-0000-0000-000000000001',
       owner_address: 'GA3L2OOK75ALKGS7NUFITP6LPLTWO22ZVR7POETNUO5DZR4SINUGKRAT',
       provider_address: 'GA3L2OOK75ALKGS7NUFITP6LPLTWO22ZVR7POETNUO5DZR4SINUGKRAT',
-      origin_url: 'https://mock-api.fund402.workers.dev',
+      origin_url: 'http://localhost:3005/api/demo-paid-endpoint',
       name: 'Demo Price Feed',
       price_usdc: "500000", // 0.05 USDC (assuming 7 decimals or specific scaling)
       active: true,

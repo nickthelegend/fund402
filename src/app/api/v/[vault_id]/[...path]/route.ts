@@ -183,6 +183,7 @@ export async function GET(
   const vaultRow = db.vaults[vault_id];
 
   if (!vaultRow || !vaultRow.active) {
+    console.warn(`[fund402] ❌ Vault not found or inactive: ${vault_id}`);
     return NextResponse.json(
       { error: "vault_not_found", vault_id },
       { status: 404, headers: CORS_HEADERS }
@@ -196,14 +197,17 @@ export async function GET(
   // PATH A: No payment header → issue 402 challenge
   // ══════════════════════════════════════════════════════════════
   if (!paymentSignatureHeader) {
+    console.log(`[fund402] 🔍 Request to ${vault_id}/${fullPath} from ${clientIp}`);
     const challengeOk = await checkChallengeRateLimit(vault_id, clientIp);
     if (!challengeOk) {
+      console.warn(`[fund402] 🛑 Rate limit exceeded for ${clientIp}`);
       return NextResponse.json(
         { error: "challenge_rate_limit_exceeded" },
         { status: 429, headers: CORS_HEADERS }
       );
     }
 
+    console.log(`[fund402] 🎫 Issuing 402 Challenge: ${vaultRow.price_usdc} USDC`);
     const paymentRequiredBody = {
       x402Version: 2,
       accepts: [
@@ -239,12 +243,13 @@ export async function GET(
   // PATH B: Payment header present → validate + settle + proxy
   // ══════════════════════════════════════════════════════════════
   try {
+    console.log(`[fund402] 💳 Received Payment Signature for ${vault_id}`);
     // ── Decode payment-signature ──
     let paymentPayload: {
       x402Version: number;
       scheme: string;
       network: string;
-      payload: { transaction: string; agentAddress: string };
+      payload: { transaction: string; agentAddress: string; txHash?: string };
       extensions?: { "payment-identifier"?: string };
     };
     try {
@@ -252,6 +257,7 @@ export async function GET(
         Buffer.from(paymentSignatureHeader, "base64").toString("utf-8")
       );
     } catch {
+      console.error(`[fund402] ❌ Malformed payment signature payload`);
       return NextResponse.json(
         { error: "malformed_payment_signature" },
         { status: 400, headers: CORS_HEADERS }
@@ -260,6 +266,7 @@ export async function GET(
 
     // ── Validate x402 version ──
     if (paymentPayload.x402Version !== 2) {
+      console.warn(`[fund402] ❌ Unsupported version: ${paymentPayload.x402Version}`);
       return NextResponse.json(
         { error: "unsupported_x402_version", got: paymentPayload.x402Version },
         { status: 400, headers: CORS_HEADERS }
@@ -289,6 +296,7 @@ export async function GET(
     try {
       tx = StellarSdk.TransactionBuilder.fromXDR(txXdr, NETWORK_PASSPHRASE) as StellarSdk.Transaction;
       txHash = tx.hash().toString("hex");
+      console.log(`[fund402] ⚙️  Parsed Transaction: ${txHash}`);
     } catch {
       return NextResponse.json(
         { error: "invalid_transaction_xdr" },
@@ -299,6 +307,7 @@ export async function GET(
     // ── Replay prevention ──
     const alreadySettled = await isAlreadySettled(txHash);
     if (alreadySettled) {
+      console.warn(`[fund402] 🔁 Replay detected! Hash already settled: ${txHash}`);
       return NextResponse.json(
         { error: "transaction_already_settled", txHash },
         { status: 409, headers: CORS_HEADERS }
@@ -315,25 +324,41 @@ export async function GET(
     }
 
     // ── Submit transaction to Stellar ──
+    // The agent SDK may have already submitted the transaction.
+    // Check if a txHash was provided and verify it on-chain first.
+    console.log(`[fund402] 🌎 Processing JIT loan settlement...`);
     const horizon = new StellarSdk.Horizon.Server(HORIZON_URL);
-    try {
-      await horizon.submitTransaction(tx);
-    } catch (submitErr: unknown) {
-      const errMsg =
-        typeof submitErr === "object" && submitErr !== null && "response" in submitErr
-          ? JSON.stringify((submitErr as { response: unknown }).response)
-          : String(submitErr);
-      console.error("[fund402] Horizon submit error:", errMsg);
-      return NextResponse.json(
-        { error: "transaction_submission_failed", detail: errMsg },
-        { status: 400, headers: CORS_HEADERS }
-      );
+    
+    const preSubmittedHash = paymentPayload.payload?.txHash;
+    
+    if (preSubmittedHash) {
+      // Agent already submitted — just verify it exists on-chain
+      console.log(`[fund402] ⚡ Agent pre-submitted tx: ${preSubmittedHash}`);
+      txHash = preSubmittedHash;
+    } else {
+      // Legacy path: gateway submits the transaction
+      try {
+        await horizon.submitTransaction(tx);
+        console.log(`[fund402] ✅ Transaction submitted by gateway!`);
+      } catch (submitErr: unknown) {
+        const errMsg =
+          typeof submitErr === "object" && submitErr !== null && "response" in submitErr
+            ? JSON.stringify((submitErr as { response: unknown }).response)
+            : String(submitErr);
+        console.error("[fund402] ❌ Horizon submit error:", errMsg);
+        return NextResponse.json(
+          { error: "transaction_submission_failed", detail: errMsg },
+          { status: 400, headers: CORS_HEADERS }
+        );
+      }
     }
 
     // ── Poll for confirmation ──
     let confirmedTx: any;
     try {
+      console.log(`[fund402] ⏳ Waiting for ledger confirmation...`);
       confirmedTx = await pollTransactionConfirmation(horizon, txHash);
+      console.log(`[fund402] ⭐ Confirmed in ledger ${confirmedTx.ledger}`);
     } catch (pollErr) {
       return NextResponse.json(
         { error: "transaction_confirmation_timeout", txHash },
@@ -366,6 +391,7 @@ export async function GET(
     }
 
     // ── Forward to origin API ──
+    console.log(`[fund402] 🚀 Forwarding request to origin: ${vaultRow.origin_url}`);
     const originUrl = new URL(`${vaultRow.origin_url}/${fullPath}`);
     req.nextUrl.searchParams.forEach((value, key) => {
       originUrl.searchParams.set(key, value);
@@ -383,7 +409,9 @@ export async function GET(
           "x-fund402-block": String(confirmedTx.ledger),
         },
       });
+      console.log(`[fund402] ✅ Origin responded with ${originResponse.status}`);
     } catch (fetchErr) {
+      console.error(`[fund402] ❌ Origin fetch failed: ${fetchErr}`);
       return NextResponse.json(
         { error: "origin_fetch_failed", origin: originUrl.toString(), detail: String(fetchErr) },
         { status: 502, headers: CORS_HEADERS }
@@ -418,7 +446,7 @@ export async function GET(
       },
     });
   } catch (err) {
-    console.error("[fund402] Unhandled gateway error:", err);
+    console.error("[fund402] ❌ Unhandled gateway error:", err);
     return NextResponse.json(
       { error: "internal_gateway_error", detail: String(err) },
       { status: 500, headers: CORS_HEADERS }

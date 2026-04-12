@@ -92,17 +92,19 @@ export function withPaymentInterceptor(config: Fund402Config): AxiosInstance {
       let requiredCollateralXlm = amount * 150n / 100n; // Default if simulation fails for some reason
       
       if (StellarSdk.rpc.Api.isSimulationSuccess(simulationResponse) && simulationResponse.result?.retval) {
-        const parsed = parseSimulateBorrowResult(simulationResponse.result.retval);
-        requiredCollateralXlm = BigInt(parsed.required_collateral_xlm);
+        const native = StellarSdk.scValToNative(simulationResponse.result.retval);
+        if (native && typeof native.required_collateral_xlm === "bigint") {
+          requiredCollateralXlm = native.required_collateral_xlm;
+        }
       }
 
-      // 2. Build and Sign borrow_and_pay
+      // 2. Build, Prepare, Sign, and Submit borrow_and_pay
       config.onEvent?.({ type: "signing_transaction", data: { merchant }, timestamp: Date.now() });
 
       const vaultIdScVal = StellarSdk.nativeToScVal("vault_1", { type: "string" });
       const borrowTx = new StellarSdk.TransactionBuilder(
         await horizonServer.loadAccount(config.agentPublicKey),
-        { fee: "1000", networkPassphrase: config.networkPassphrase }
+        { fee: "10000000", networkPassphrase: config.networkPassphrase }
       )
         .addOperation(
           vaultContract.call(
@@ -117,14 +119,45 @@ export function withPaymentInterceptor(config: Fund402Config): AxiosInstance {
         .setTimeout(60)
         .build();
 
-      borrowTx.sign(keypair);
-      const signedXdr = borrowTx.toXDR();
+      // Prepare the transaction (adds footprint, resource limits)
+      const preparedTx = await sorobanServer.prepareTransaction(borrowTx) as StellarSdk.Transaction;
+      preparedTx.sign(keypair);
 
-      // 3. Attach header and retry
-      config.onEvent?.({ type: "payment_sent", data: { xdr: signedXdr }, timestamp: Date.now() });
+      // Submit directly to Soroban RPC
+      const sendResult = await sorobanServer.sendTransaction(preparedTx);
+
+      // Poll for confirmation
+      if (sendResult.status === "PENDING") {
+        let getResult;
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 2000));
+          getResult = await sorobanServer.getTransaction(sendResult.hash);
+          if (getResult.status !== "NOT_FOUND") break;
+        }
+        if (!getResult || getResult.status !== "SUCCESS") {
+          throw new Error(`borrow_and_pay failed: ${getResult ? JSON.stringify(getResult) : "timeout"}`);
+        }
+      } else if (sendResult.status === "ERROR") {
+        throw new Error(`borrow_and_pay submit error: ${JSON.stringify(sendResult)}`);
+      }
+
+      // 3. Attach proof (tx hash) and retry
+      config.onEvent?.({ type: "payment_sent", data: { txHash: sendResult.hash }, timestamp: Date.now() });
 
       const originalRequest = error.config as InternalAxiosRequestConfig;
-      originalRequest.headers["payment-signature"] = Buffer.from(signedXdr).toString("base64");
+      
+      const paymentSignature = {
+        x402Version: 2,
+        scheme: "exact",
+        network: config.networkPassphrase === StellarSdk.Networks.PUBLIC ? "stellar:mainnet" : "stellar:testnet",
+        payload: {
+          transaction: preparedTx.toXDR(),
+          agentAddress: config.agentPublicKey,
+          txHash: sendResult.hash
+        }
+      };
+
+      originalRequest.headers["payment-signature"] = Buffer.from(JSON.stringify(paymentSignature)).toString("base64");
 
       config.onEvent?.({ type: "request_retried", data: { url: originalRequest.url }, timestamp: Date.now() });
 
@@ -135,29 +168,7 @@ export function withPaymentInterceptor(config: Fund402Config): AxiosInstance {
   return instance;
 }
 
-function parseSimulateBorrowResult(retval: StellarSdk.xdr.ScVal): {
-  required_collateral_xlm: string;
-  fee: string;
-} {
-  if (retval.switch() !== StellarSdk.xdr.ScValType.scvMap()) {
-    throw new Error("Expected ScvMap from simulate_borrow");
-  }
-  const map = retval.map()!;
-  const result: Record<string, string> = {};
-  for (const entry of map) {
-    const key = entry.key().sym().toString();
-    const val = entry.val();
-    if (val.switch() === StellarSdk.xdr.ScValType.scvI128()) {
-      const hi = BigInt(val.i128().hi().toString());
-      const lo = BigInt(val.i128().lo().toString());
-      result[key] = ((hi << 64n) | lo).toString();
-    }
-  }
-  return {
-    required_collateral_xlm: result["required_collateral_xlm"] ?? "0",
-    fee: result["fee"] ?? "0",
-  };
-}
+
 
 export function extractTxHash(txXdr: string, networkPassphrase: string): string {
   const tx = StellarSdk.TransactionBuilder.fromXDR(txXdr, networkPassphrase);
