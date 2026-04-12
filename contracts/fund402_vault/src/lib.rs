@@ -132,6 +132,10 @@ impl Fund402Vault {
         Ok(())
     }
 
+    pub fn get_lp_balance(env: Env, lp: Address) -> i128 {
+        env.storage().instance().get::<_, i128>(&DataKey::LpBalance(lp)).unwrap_or(0)
+    }
+
     pub fn simulate_borrow(env: Env, usdc_amount: i128) -> SimulateBorrowResult {
         let price = Self::get_price(env.clone());
         // USDC has 7 decimals, XLM has 7

@@ -13,10 +13,12 @@ const DEFAULT_DB: LocalDB = {
     'a0000000-0000-0000-0000-000000000001': {
       id: 'a0000000-0000-0000-0000-000000000001',
       owner_address: 'GA3L2OOK75ALKGS7NUFITP6LPLTWO22ZVR7POETNUO5DZR4SINUGKRAT',
-      merchant_address: 'GA3L2OOK75ALKGS7NUFITP6LPLTWO22ZVR7POETNUO5DZR4SINUGKRAT',
+      provider_address: 'GA3L2OOK75ALKGS7NUFITP6LPLTWO22ZVR7POETNUO5DZR4SINUGKRAT',
       origin_url: 'https://mock-api.fund402.workers.dev',
       name: 'Demo Price Feed',
-      active: true
+      price_usdc: "500000", // 0.05 USDC (assuming 7 decimals or specific scaling)
+      active: true,
+      description: "Premium Real-time Market Data via JIT Loans"
     }
   },
   calls: []
