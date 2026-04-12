@@ -96,11 +96,11 @@ export default function ProviderDashboard() {
                   <p className="font-mono font-semibold text-green-400">{fmt(v.revenue_usdc ?? 0)}</p>
                 </div>
               </div>
-              <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
-                <p className="text-xs text-gray-500 font-mono">{`http://localhost:3000/v/${v.id}/`}</p>
+              <div className="flex items-center gap-2 mt-2 bg-black/40 p-2 rounded justify-between">
+                <p className="text-xs text-gray-500 font-mono">{`https://fund402.vercel.app/v/${v.id}/`}</p>
                 <button
-                  onClick={() => navigator.clipboard.writeText(`http://localhost:3000/v/${v.id}/`)}
-                  className="text-xs text-[#00C0FF] hover:underline"
+                  onClick={() => navigator.clipboard.writeText(`https://fund402.vercel.app/v/${v.id}/`)}
+                  className="text-[#00C0FF] hover:text-white"
                 >
                   Copy URL
                 </button>

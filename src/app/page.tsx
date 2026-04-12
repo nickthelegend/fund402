@@ -2,7 +2,7 @@
 import { useState } from "react";
 
 const CONTRACT_ID = "CDXTW6IMQTPTWWBV7T5FYZZHXQFLWFXAQZHI32SHQS3YHKL6YLM7APD5";
-const DEMO_VAULT_URL = "http://localhost:3005/api/v/a0000000-0000-0000-0000-000000000001/";
+const DEMO_VAULT_URL = "https://fund402.vercel.app/api/v/a0000000-0000-0000-0000-000000000001/";
 
 const CODE_SNIPPET = `import { withPaymentInterceptor, testnetConfig } from "@nickthelegend/fund402";
 
@@ -16,7 +16,7 @@ const agent = withPaymentInterceptor({
 
 // Automatically handles HTTP 402 — borrows USDC, pays, retries
 const { data } = await agent.get(
-  "http://localhost:3005/api/v/a0000000-0000-0000-0000-000000000001/prices/XLM-USDC/spot"
+  "https://fund402.vercel.app/api/v/a0000000-0000-0000-0000-000000000001/prices/XLM-USDC/spot"
 );`;
 
 export default function LandingPage() {
@@ -35,8 +35,8 @@ export default function LandingPage() {
         <span className="text-xl font-bold text-[#00C0FF]">fund402</span>
         <div className="flex gap-4 text-sm">
           <a href="/vault/register" className="text-gray-400 hover:text-white transition">Register API</a>
-          <a href="http://localhost:3007" className="text-gray-400 hover:text-white transition">Dashboard</a>
-          <a href="http://localhost:3006" className="text-gray-400 hover:text-white transition">Demo Agent</a>
+          <a href="https://fund402-dashboard.vercel.app" className="text-gray-400 hover:text-white transition">Dashboard</a>
+          <a href="https://fund402-demo.vercel.app" className="text-gray-400 hover:text-white transition">Demo Agent</a>
           <a
             href={`https://stellar.expert/explorer/testnet/contract/${CONTRACT_ID}`}
             target="_blank"
@@ -64,7 +64,7 @@ export default function LandingPage() {
         </p>
         <div className="flex gap-4 justify-center flex-wrap">
           <a
-            href="http://localhost:3006"
+            href="https://fund402-demo.vercel.app"
             className="bg-[#00C0FF] text-black font-semibold px-8 py-3 rounded-xl hover:bg-[#00a8df] transition"
           >
             Try the Demo →

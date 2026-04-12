@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       active: true
     });
 
-    const gateway = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+    const gateway = process.env.NEXTAUTH_URL ?? "https://fund402.vercel.app";
     const wrappedUrl = `${gateway}/v/${vaultId}/`;
 
     return NextResponse.json({ vaultId, wrappedUrl });
