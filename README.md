@@ -4,10 +4,33 @@ Fund402 is an autonomous protocol for AI commerce. It bridges the gap between ma
 
 When an AI agent hits a paywall (HTTP 402 Payment Required), the Fund402 Gateway issues an L402-compliant challenge. If the agent lacks funds, the Gateway facilitates an instant USDC JIT loan from the Fund402 Soroban Vault, enabling the agent to pay the paywall, access the data, and resolve the loan—all in a single on-chain transaction.
 
-## 🚀 Architecture
+## 🚀 Architecture Flow
 
-1.  **Fund402 Gateway:** A Next.js API router that wraps standard HTTP endpoints in L402 paywalls (`HTTP 402` with `payment-required` headers). It verifies incoming Soroban transaction signatures and proxies requests to the upstream origin upon successful ledger confirmation.
-2.  **Soroban Vault Contract:** A lending liquidity pool written in Rust. It allows Liquidity Providers (LPs) to earn yield by providing USDC, and allows AI Agents to take uncollateralized flash loans specifically for paying registered merchants.
+```mermaid
+sequenceDiagram
+    participant Agent as AI Agent (fund402 SDK)
+    participant Gateway as Fund402 Gateway
+    participant Mongo as MongoDB (State)
+    participant Stellar as Soroban Vault
+    participant Origin as Paid API Origin
+    
+    Agent->>Gateway: GET /api/v/vault_1/data
+    Gateway-->>Agent: 402 Payment Required (Challenge)
+    
+    Note over Agent: Agent invokes interceptor SDK
+    Agent->>Stellar: Prepare & Sign `borrow_and_pay`
+    Stellar-->>Agent: Emits Settlement txHash
+    
+    Agent->>Gateway: Retry GET with `payment-signature: txHash`
+    Gateway->>Mongo: Check Rate Limits / Replays
+    Gateway->>Stellar: Verify txHash on Horizon
+    Note over Gateway: If Valid & Confirmed
+    
+    Gateway->>Mongo: Log Receipt to `Calls` DB
+    Gateway->>Origin: Proxy Request (Server-side)
+    Origin-->>Gateway: 200 OK (Premium Data)
+    Gateway-->>Agent: 200 OK + `payment-response` receipt
+```
 
 ## 📁 Repository Structure
 
@@ -17,7 +40,7 @@ When an AI agent hits a paywall (HTTP 402 Payment Required), the Fund402 Gateway
 
 ## 🛠 Setup & Running
 
-**Prerequisites:** Node.js, Redis (for rate limiting), Postgres (for tracking), and the Stellar CLI.
+**Prerequisites:** Node.js, MongoDB cluster (for state/rate limits), and the Stellar CLI.
 
 1.  **Install Dependencies:**
     ```bash
@@ -26,11 +49,12 @@ When an AI agent hits a paywall (HTTP 402 Payment Required), the Fund402 Gateway
     ```
 
 2.  **Configure Environment:**
-    Ensure your `.env.local` is set with your Testnet Horizon, Soroban RPC, and the Vault Contract ID:
+    Ensure your `.env.local` is set with your Testnet Horizon, Soroban RPC, MongoDB, and the Vault Contract ID:
     ```
     STELLAR_NETWORK=testnet
     SOROBAN_RPC_URL=https://soroban-testnet.stellar.org
     HORIZON_URL=https://horizon-testnet.stellar.org
+    MONGODB_URI=mongodb+srv://...
     FUND402_VAULT_CONTRACT_ID=<YOUR_DEPLOYED_CONTRACT_ID>
     USDC_ISSUER=GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
     ```
@@ -41,4 +65,4 @@ When an AI agent hits a paywall (HTTP 402 Payment Required), the Fund402 Gateway
     # Runs on localhost:3005
     ```
 
-The Gateway expects the local database `fund402_store.json` to configure the origins and merchant addresses for active vaults.
+The Gateway uses MongoDB to configure the origins and merchant addresses for active vaults and to track all confirmed 402 payments.
