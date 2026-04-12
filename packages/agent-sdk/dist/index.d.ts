@@ -34,3 +34,5 @@ export interface ResourceInfo {
 }
 export declare function withPaymentInterceptor(config: Fund402Config): AxiosInstance;
 export declare function extractTxHash(txXdr: string, networkPassphrase: string): string;
+export declare function testnetConfig(): Partial<Fund402Config>;
+export declare function mainnetConfig(): Partial<Fund402Config>;

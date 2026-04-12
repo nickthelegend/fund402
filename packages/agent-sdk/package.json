@@ -1,15 +1,24 @@
 {
-  "name": "agent-sdk",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "@nickthelegend/fund402",
+  "version": "0.1.0",
+  "description": "Stellar-native Axios interceptor for autonomous AI agents",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "stellar",
+    "soroban",
+    "ai",
+    "jit-loans",
+    "402"
+  ],
+  "author": "nickthelegend",
+  "license": "MIT",
   "type": "commonjs",
   "devDependencies": {
     "typescript": "^5.0.0",
