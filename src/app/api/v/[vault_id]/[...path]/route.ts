@@ -1,20 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, saveDb } from "../../../../../lib/db";
-import { createClient } from "redis";
+import { getVault, insertCall, checkRateLimit, isSettled, markSettled } from "../../../../../lib/db";
 import * as StellarSdk from "@stellar/stellar-sdk";
-
-const redisClient = createClient({
-  url: process.env.REDIS_URL ?? "redis://localhost:6379",
-});
-
-let redisConnected = false;
-async function getRedis() {
-  if (!redisConnected) {
-    await redisClient.connect();
-    redisConnected = true;
-  }
-  return redisClient;
-}
 
 // ─── STELLAR CONFIG ──────────────────────────────────────────────────────────
 
@@ -52,23 +38,15 @@ export async function OPTIONS() {
 
 async function checkGlobalRateLimit(): Promise<boolean> {
   try {
-    const r = await getRedis();
-    const key = "rl:global";
-    const count = await r.incr(key);
-    if (count === 1) await r.expire(key, 60);
-    return count <= 10000;
+    return await checkRateLimit("rl:global", 10000);
   } catch {
-    return true; // if redis is down, don't block
+    return true; // if db is down, don't block
   }
 }
 
 async function checkChallengeRateLimit(vaultId: string, ip: string): Promise<boolean> {
   try {
-    const r = await getRedis();
-    const key = `rl:challenge:${vaultId}:${ip}`;
-    const count = await r.incr(key);
-    if (count === 1) await r.expire(key, 60);
-    return count <= 120;
+    return await checkRateLimit(`rl:challenge:${vaultId}:${ip}`, 120);
   } catch {
     return true;
   }
@@ -76,38 +54,9 @@ async function checkChallengeRateLimit(vaultId: string, ip: string): Promise<boo
 
 async function checkPayerRateLimit(vaultId: string, payer: string): Promise<boolean> {
   try {
-    const r = await getRedis();
-    const key = `rl:payer:${vaultId}:${payer}`;
-    const count = await r.incr(key);
-    if (count === 1) await r.expire(key, 60);
-    return count <= 100;
+    return await checkRateLimit(`rl:payer:${vaultId}:${payer}`, 100);
   } catch {
     return true;
-  }
-}
-
-// ─── REPLAY PREVENTION ───────────────────────────────────────────────────────
-
-async function isAlreadySettled(txHash: string): Promise<boolean> {
-  try {
-    const r = await getRedis();
-    const val = await r.get(`settled:${txHash}`);
-    return val !== null;
-  } catch {
-    return false;
-  }
-}
-
-async function markSettled(txHash: string, payer: string, vaultId: string): Promise<void> {
-  try {
-    const r = await getRedis();
-    await r.setEx(
-      `settled:${txHash}`,
-      86400, // 24 hours
-      JSON.stringify({ txHash, payer, vaultId, settledAt: Date.now() })
-    );
-  } catch {
-    // non-fatal if redis is down
   }
 }
 
@@ -179,8 +128,7 @@ export async function GET(
   }
 
   // ── Load vault from DB ──
-  const db = getDb();
-  const vaultRow = db.vaults[vault_id];
+  const vaultRow = await getVault(vault_id);
 
   if (!vaultRow || !vaultRow.active) {
     console.warn(`[fund402] ❌ Vault not found or inactive: ${vault_id}`);
@@ -369,10 +317,9 @@ export async function GET(
     // ── Mark as settled in Redis ──
     await markSettled(txHash, agentAddress, vault_id);
 
-    // ── Record in Postgres ──
-    const currentDb = getDb();
-    currentDb.calls.push({
-      id: crypto.randomUUID(),
+    // ── Record in MongoDB ──
+    await insertCall({
+      _id: crypto.randomUUID(),
       vault_id,
       tx_hash: txHash,
       agent_address: agentAddress,
@@ -380,7 +327,6 @@ export async function GET(
       status: 'confirmed',
       created_at: new Date().toISOString()
     });
-    saveDb(currentDb);
 
     // ── SSRF check on origin ──
     if (!isAllowedUrl(vaultRow.origin_url)) {
