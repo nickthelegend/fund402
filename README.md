@@ -65,4 +65,12 @@ sequenceDiagram
     # Runs on localhost:3005
     ```
 
+## 🔗 Live Demonstration (Stellar Testnet)
+
+See the protocol in action on-chain:
+
+*   **Agent Autonomous Payment (JIT Loan)**: [68f766a8...2a700](https://stellar.expert/explorer/testnet/tx/68f766a8580b8fec9b25b8e077c46f078f783d264c957d0e8bacea7d8522a700)
+*   **Agent Autonomous Payment (JIT Loan)**: [f73b165d...0b67b](https://stellar.expert/explorer/testnet/tx/f73b165d2c069335902ad7d2ad4ce440fe93f44c79eda2e8dcef09a06eb0b67b)
+*   **Vault Liquidity Deposit**: [c18519dd...90f9](https://stellar.expert/explorer/testnet/tx/c18519dd844c30de6c3d85cea11d01c7eeda4b34822d33c4d63ad155df7490f9)
+
 The Gateway uses MongoDB to configure the origins and merchant addresses for active vaults and to track all confirmed 402 payments.
