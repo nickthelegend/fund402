@@ -25,20 +25,22 @@ async function connectToDatabase() {
 async function setupDatabase(db: any) {
   const vaults = db.collection('Vaults');
   
-  // Seed the demo vault if it doesn't exist
-  const existingVault = await vaults.findOne({ id: 'a0000000-0000-0000-0000-000000000001' });
-  if (!existingVault) {
-    await vaults.insertOne({
-      id: 'a0000000-0000-0000-0000-000000000001',
-      owner_address: 'GA3L2OOK75ALKGS7NUFITP6LPLTWO22ZVR7POETNUO5DZR4SINUGKRAT',
-      provider_address: 'GA3L2OOK75ALKGS7NUFITP6LPLTWO22ZVR7POETNUO5DZR4SINUGKRAT',
-      origin_url: 'https://fund402.vercel.app/api/demo-paid-endpoint',
-      name: 'Demo Price Feed',
-      price_usdc: "500000", // 0.05 USDC
-      active: true,
-      description: "Premium Real-time Market Data via JIT Loans"
-    });
-  }
+  // Seed/Update the demo vault to ensure it always points to the correct production URL
+  await vaults.updateOne(
+    { id: 'a0000000-0000-0000-0000-000000000001' },
+    {
+      $set: {
+        owner_address: 'GA3L2OOK75ALKGS7NUFITP6LPLTWO22ZVR7POETNUO5DZR4SINUGKRAT',
+        provider_address: 'GA3L2OOK75ALKGS7NUFITP6LPLTWO22ZVR7POETNUO5DZR4SINUGKRAT',
+        origin_url: 'https://fund402.vercel.app/api/demo-paid-endpoint',
+        name: 'Demo Price Feed',
+        price_usdc: "500000", // 0.05 USDC
+        active: true,
+        description: "Premium Real-time Market Data via JIT Loans"
+      }
+    },
+    { upsert: true }
+  );
 
   // Set up TTL index so Redis replays auto-expire after 24 hours
   const replays = db.collection('Replays');
@@ -95,8 +97,8 @@ export async function checkRateLimit(key: string, maxRequests: number): Promise<
     { upsert: true, returnDocument: 'after' }
   );
   
-  // result.value contains the document after increment
-  const doc = result || result?.value; // Mongoose vs raw driver fallback structure
+  // result might be the document itself or { value: doc }
+  const doc: any = result && 'value' in result ? result.value : result;
   const currentCount = doc?.count || 1;
   return currentCount <= maxRequests;
 }
